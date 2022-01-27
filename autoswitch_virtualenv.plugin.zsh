@@ -344,7 +344,7 @@ function mkvenv()
 
             _maybeworkon "$(_virtual_env_dir "$venv_name")" "virtualenv"
 
-            install_requirements
+            # install_requirements
         fi
     fi
 }
