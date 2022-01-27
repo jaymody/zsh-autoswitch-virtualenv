@@ -1,5 +1,14 @@
-export AUTOSWITCH_VERSION="3.4.0"
-export AUTOSWITCH_FILE=".venv"
+export AUTOSWITCH_VERSION="3.4.0"           # Version of autoswitch
+
+export AUTOSWITCH_DEFAULT_PYTHON=           # default python version to create virtualenv with (can be overridden with --python)
+export AUTOSWITCH_DEFAULT_REQUIREMENTS=     # default requirements file to prompt installation from
+export AUTOSWITCH_DEFAULTENV=               # default env when not in virtualenv dir, leave empy to use no env
+export AUTOSWITCH_FILE=".autoswitch"        # autoswitch file name
+export AUTOSWITCH_MESSAGE_FORMAT=           # custom format of messages
+export AUTOSWITCH_PIPINSTALL=               # if empty, pip install -e ., else pip install .
+export AUTOSWITCH_SILENT=                   # if empty, show message, else don't show messages
+export AUTOSWITCH_VIRTUAL_ENV_DIR=".venv"   # virtualenv directory name
+
 
 RED="\e[31m"
 GREEN="\e[32m"
