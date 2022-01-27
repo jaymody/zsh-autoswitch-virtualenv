@@ -7,7 +7,7 @@ export AUTOSWITCH_FILE=".autoswitch"        # autoswitch file name
 export AUTOSWITCH_MESSAGE_FORMAT=           # custom format of messages
 export AUTOSWITCH_PIPINSTALL=               # if empty, pip install -e ., else pip install .
 export AUTOSWITCH_SILENT=                   # if empty, show message, else don't show messages
-export AUTOSWITCH_VIRTUAL_ENV_DIR=".venv"   # virtualenv directory name
+export AUTOSWITCH_VIRTUAL_ENV_DIR=".venv"   # virtualenv directory name, should be a local dir (relative path)
 
 
 RED="\e[31m"
@@ -329,7 +329,8 @@ function mkvenv()
             printf "$AUTOSWITCH_FILE file already exists. If this is a mistake use the rmvenv command\n"
         else
             # local venv_name="$(basename $PWD)-$(randstr)"
-            local venv_name="$(basename $PWD)"
+            # local venv_name="$(basename $PWD)"
+            local venv_name=    # empty
 
             printf "Creating ${PURPLE}%s${NONE} virtualenv\n" "$venv_name"
 
