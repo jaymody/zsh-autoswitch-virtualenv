@@ -27,7 +27,7 @@ function _source_virtualenv() {
 }
 
 
-function _python_version() {
+function _get_python_version() {
     local PYTHON_BIN="$1"
     if [[ -f "$PYTHON_BIN" ]] then
         # for some reason python --version writes to stderr
@@ -42,115 +42,6 @@ function _autoswitch_message() {
     if [ -z "$AUTOSWITCH_SILENT" ]; then
         (>&2 printf "$@")
     fi
-}
-
-
-function _get_virtualenv_name() {
-    local virtualenv_dir="$1"
-    local virtualenv_type="$2"
-    local virtualenv_name="$(basename "$virtualenv_dir")"
-
-    # clear pipenv from the extra identifiers at the end
-    if [[ "$virtualenv_type" == "pipenv" ]]; then
-        virtualenv_name="${virtualenv_name%-*}"
-    fi
-
-    printf "%s" "$virtualenv_name"
-}
-
-
-function _maybeworkon() {
-    local virtualenv_dir="$1"
-    local virtualenv_type="$2"
-    local virtualenv_name="$(_get_virtualenv_name $virtualenv_dir $virtualenv_type)"
-
-    local DEFAULT_MESSAGE_FORMAT="Switching %virtualenv_type: ${BOLD}${PURPLE}%virtualenv_name${NORMAL} ${GREEN}[🐍%py_version]${NORMAL}"
-    if [[ "$LANG" != *".UTF-8" ]]; then
-        # remove multibyte characters if the terminal does not support utf-8
-        DEFAULT_MESSAGE_FORMAT="${DEFAULT_MESSAGE_FORMAT/🐍/}"
-    fi
-
-    # don't reactivate an already activated virtual environment
-    if [[ -z "$VIRTUAL_ENV" || "$virtualenv_name" != "$(_get_virtualenv_name $VIRTUAL_ENV $virtualenv_type)" ]]; then
-        if [[ ! -d "$virtualenv_dir" ]]; then
-            printf "Unable to find ${PURPLE}$virtualenv_name${NORMAL} virtualenv\n"
-            return
-        fi
-
-        local py_version="$(_python_version "$virtualenv_dir/bin/python")"
-        local message="${AUTOSWITCH_MESSAGE_FORMAT:-"$DEFAULT_MESSAGE_FORMAT"}"
-        message="${message//\%virtualenv_type/$virtualenv_type}"
-        message="${message//\%virtualenv_name/$virtualenv_name}"
-        message="${message//\%py_version/$py_version}"
-        _autoswitch_message "${message}\n"
-
-        # if we are using pipenv and activate its virtual environment - turn down its verbosity
-        # to prevent users seeing " Pipenv found itself running within a virtual environment" warning
-        if [[ "$virtualenv_type" == "pipenv" && "$PIPENV_VERBOSITY" != -1 ]]; then
-            export PIPENV_VERBOSITY=-1
-        fi
-
-        # much faster to source the activate file directly rather than use the `workon` command
-        _source_virtualenv "$virtualenv_dir"
-    fi
-}
-
-
-
-function _activate_poetry() {
-    # TODO: make this faster (slow when virtualenv dir is not local)
-    # my initial idea is to set some file (maybe .venv, since this is already
-    # .gitgnored, or maybe something else, like .autoswitch) in the root of the 
-    # workdir, and then let that file point to the virtualenv dir.
-
-    # check if any environments exist before trying to activate
-    # if env list is empty, then no environment exists that can be activated
-    local virtualenv_dir="$(poetry env list --full-path | sort -k 2 | tail -n 1 | cut -d' ' -f1)"
-    if [[ -n "$virtualenv_dir" ]]; then
-        _maybeworkon "$virtualenv_dir" "poetry"
-        return 0
-    fi
-    return 1
-}
-
-
-function _activate_pipenv() {
-    # TODO: make this faster (slow when virtualenv dir is not local)
-    # my initial idea is to set some file (maybe .venv, since this is already
-    # .gitgnored, or maybe something else, like .autoswitch) in the root of the 
-    # workdir, and then let that file point to the virtualenv dir.
-
-    # unfortunately running pipenv each time we are in a pipenv project directory is slow :(
-    if virtualenv_dir="$(PIPENV_IGNORE_VIRTUALENVS=1 pipenv --venv 2>/dev/null)"; then
-        _maybeworkon "$virtualenv_dir" "pipenv"
-        return 0
-    fi
-    return 1
-}
-
-
-function _get_virtualenv_type() {
-    # NOTE: We check pyenv first so it get's priority such that we don't conflict
-    # with their auto switching stuff via pyenv local.
-    # 
-    # We check virtualenv second because we can skip the fetching 
-    # of the virtualenv directory (via pipenv/poetry) which can be slow,
-    # this way speed is a lot more optimized. This also means if for some reason
-    # there exists a virtualenv directory that is not the one associated with
-    # pipenv/poetry, it takes priority
-
-    local cur_dir="$1"
-    if [[ -f "$cur_dir/.python-version" ]]; then
-        printf "pyenv"
-    elif [[ -f "${cur_dir}/.env/bin/activate" || -f "${cur_dir}/.venv/bin/activate" || -f "${cur_dir}/env/bin/activate" || -f "${cur_dir}/venv/bin/activate" ]]; then
-        printf "virtualenv"
-    elif [[ -f "${cur_dir}/poetry.lock" ]]; then
-        printf "poetry"
-    elif [[ -f "${cur_dir}/Pipfile" ]]; then
-        printf "pipenv"
-    else
-        printf "unknown"
-    fi  
 }
 
 
@@ -179,56 +70,121 @@ function _find_first_ancestor(){
 }
 
 
+function _get_virtualenv_type() {
+    # NOTE: We check pyenv first so it get's priority such that we don't conflict
+    # with their auto switching stuff via pyenv local.
+    # 
+    # We check virtualenv second because we can skip the fetching 
+    # of the virtualenv directory (via pipenv/poetry) which can be slow,
+    # this way speed is a lot more optimized. This also means if for some reason
+    # there exists a virtualenv directory that is not the one associated with
+    # pipenv/poetry, it takes priority
+
+    local cur_dir="$1"
+    if [[ -f "$cur_dir/.python-version" ]]; then
+        printf "pyenv"
+    elif [[ -f "${cur_dir}/.env/bin/activate" || -f "${cur_dir}/.venv/bin/activate" || -f "${cur_dir}/env/bin/activate" || -f "${cur_dir}/venv/bin/activate" ]]; then
+        printf "virtualenv"
+    elif [[ -f "${cur_dir}/poetry.lock" ]]; then
+        printf "poetry"
+    elif [[ -f "${cur_dir}/Pipfile" ]]; then
+        printf "pipenv"
+    else
+        printf "unknown"
+    fi  
+}
+
+
+function _get_virtualenv_dir() {
+    # NOTE: if type is pyenv we simply return nothing (pyenv does it's own)
+    # autoswitching
+    local work_dir="$1"
+    local virtualenv_type="$2"
+
+    local virtualenv_dir
+    if [[ "$virtualenv_type" == "pipenv" ]]; then
+        # unfortunately running pipenv each time we are in a pipenv project directory is slow :(
+        if type "pipenv" > /dev/null && _virtualenv_dir="$(PIPENV_IGNORE_VIRTUALENVS=1 pipenv --venv 2>/dev/null)"; then
+            virtualenv_dir="$_virtualenv_dir"
+        fi
+    elif [[ "$virtualenv_type" == "poetry" ]]; then
+        if type "poetry" > /dev/null && _virtualenv_dir="$(poetry env list --full-path | sort -k 2 | tail -n 1 | cut -d' ' -f1)"; then
+            virtualenv_dir="$_virtualenv_dir"
+        fi
+    elif [[ "$virtualenv_type" == "virtualenv" ]]; then
+        if [[ -f "${work_dir}/.env/bin/activate" ]]; then
+            virtualenv_dir="${work_dir}/.env"
+        elif [[ -f "${work_dir}/.venv/bin/activate" ]]; then
+            virtualenv_dir="${work_dir}/.venv"
+        elif [[ -f "${work_dir}/env/bin/activate" ]]; then
+            virtualenv_dir="${work_dir}/env"
+        elif [[ -f "${work_dir}/venv/bin/activate" ]]; then
+            virtualenv_dir="${work_dir}/venv"
+        fi
+    fi
+
+    # double check activate script exists, if not, we return nothing
+    if [[ -f "${virtualenv_dir}/bin/activate" ]]; then
+        printf "$virtualenv_dir"
+    fi
+}
+
+
+function _get_virtualenv_name() {
+    local virtualenv_dir="$1"
+    local virtualenv_type="$2"
+    local virtualenv_name="$(basename "$virtualenv_dir")"
+
+    # clear pipenv from the extra identifiers at the end
+    if [[ "$virtualenv_type" == "pipenv" ]]; then
+        virtualenv_name="${virtualenv_name%-*}"
+    fi
+
+    printf "%s" "$virtualenv_name"
+}
+
+
 function check_virtualenv() {
-    local file_owner
-    local file_permissions
+    # TODO: better security measures, maybe only activate if activate file
+    # is owned by the user running the script?
 
     local work_dir="$(_find_first_ancestor "$PWD")"
+    local virtualenv_type="$(_get_virtualenv_type "$work_dir")"
+    local virtualenv_dir="$(_get_virtualenv_dir "$work_dir" "$virtualenv_type")"
+    local virtualenv_name="$(_get_virtualenv_name $work_dir $virtualenv_type)"
+
+    local old_work_dir="$(_find_first_ancestor "$OLDPWD")"
+    local old_virtualenv_type="$(_get_virtualenv_type "$old_work_dir")"
+    local old_virtualenv_dir="$(_get_virtualenv_dir "$old_work_dir" "$old_virtualenv_type")"
+    local old_virtualenv_name="$(_get_virtualenv_name $old_work_dir $old_virtualenv_type)"
+
+    # printf "work_dir            = $work_dir\n"
+    # printf "virtualenv_type     = $virtualenv_type\n"
+    # printf "virtualenv_dir      = $virtualenv_dir\n"
+    # printf "virtualenv_name     = $virtualenv_name\n"
     
     # if we are in a virtualenv project
-    if [[ -n "$work_dir" ]]; then
-        local virtualenv_type="$(_get_virtualenv_type "$work_dir")"
-
-        # TODO: better security measures, maybe only activate if activate file
-        # is owned by the user running the script?
-        
-        if [[ "$virtualenv_type" == "pipenv" ]]; then
-            if type "pipenv" > /dev/null && _activate_pipenv; then
-                return
-            fi
-        elif [[ "$virtualenv_type" == "poetry" ]]; then
-            if type "poetry" > /dev/null && _activate_poetry; then
-                return
-            fi
-        elif [[ "$virtualenv_type" == "virtualenv" ]]; then
-            # TODO: repeated work, not a very clean pattern lol
-            local virtualenv_dir
-            if [[ -d "${work_dir}/.env" ]]; then
-                virtualenv_dir="${work_dir}/.env"
-            elif [[ -d "${work_dir}/.venv" ]]; then
-                virtualenv_dir="${work_dir}/.venv"
-            elif [[ -d "${work_dir}/env" ]]; then
-                virtualenv_dir="${work_dir}/env"
-            elif [[ -d "${work_dir}/venv" ]]; then
-                virtualenv_dir="${work_dir}/venv"
-            else
-                printf "${RED}AUTOSWITCH ERROR: Could not locate virtualenv dir\n"
-            fi
-            _maybeworkon "$virtualenv_dir" "virtualenv"
+    if [[ -d "$work_dir" && -d "$virtualenv_dir" ]]; then
+        # Don't reactivate (i.e.) if the current virtual env == project virtualenv
+        if [[ "$VIRTUAL_ENV" == "$virtualenv_dir" ]]; then
             return
-        elif [[ "$virtualenv_type" == "pyenv" ]]; then
-            # do nothing
-        else
-            printf "${RED}AUTOSWITCH ERROR: Unknown virtualenv type: $virtualenv_type${NORMAL}\n"
         fi
-    elif [[ -n "$VIRTUAL_ENV" ]]; then
-        local virtualenv_type="$(_get_virtualenv_type "$OLDPWD")"
 
-        if [[ "$virtualenv_type" == "pyenv" ]]; then
-            # do nothing
-        else
-            local virtualenv_name="$(_get_virtualenv_name "$VIRTUAL_ENV" "$virtualenv_type")"
-            _autoswitch_message "Deactivating: ${BOLD}${PURPLE}%s${NORMAL}\n" "$virtualenv_name"
+        local py_version="$(_get_python_version "$virtualenv_dir/bin/python")"
+        _autoswitch_message "Switching $virtualenv_type: ${BOLD}${PURPLE}$virtualenv_name${NORMAL} ${GREEN}[$py_version]${NORMAL}\n"
+
+        # if we are using pipenv and activate its virtual environment - turn down its verbosity
+        # to prevent users seeing " Pipenv found itself running within a virtual environment" warning
+        if [[ "$virtualenv_type" == "pipenv" && "$PIPENV_VERBOSITY" != -1 ]]; then
+            export PIPENV_VERBOSITY=-1
+        fi
+
+        # source activate file (faster than use the `workon` command)
+        _source_virtualenv "$virtualenv_dir"
+    # case where a virtualenv is active, but where are not in a virtualenv project
+    elif [[ -n "$VIRTUAL_ENV" ]]; then
+        if [[ -d "$old_work_dir" && -d "$old_virtualenv_dir" && "$VIRTUAL_ENV" == "$old_virtualenv_dir" ]]; then
+            _autoswitch_message "Deactivating: ${BOLD}${PURPLE}%s${NORMAL}\n" "$old_virtualenv_name"
             deactivate
         fi
     else
