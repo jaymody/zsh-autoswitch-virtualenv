@@ -137,7 +137,7 @@ function _get_virtualenv_type() {
     # pipenv/poetry, it takes priority
 
     local cur_dir="$1"
-    if [[ -d "${cur_dir}/.env" || -d "${cur_dir}/.venv" || -d "${cur_dir}/env" || -d "${cur_dir}/venv" ]]; then
+    if [[ -f "${cur_dir}/.env/bin/activate" || -f "${cur_dir}/.venv/bin/activate" || -f "${cur_dir}/env/bin/activate" || -f "${cur_dir}/venv/bin/activate" ]]; then
         printf "virtualenv"
     elif [[ -f "${cur_dir}/poetry.lock" ]]; then
         printf "poetry"
