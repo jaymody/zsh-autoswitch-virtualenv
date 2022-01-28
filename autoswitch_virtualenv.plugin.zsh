@@ -1,7 +1,6 @@
 export AUTOSWITCH_VERSION="3.4.0"           # version of autoswitch
 
 # --- editable settings ---
-# AUTOSWITCH_MESSAGE_FORMAT         # custom format of messages
 # AUTOSWITCH_SILENT                 # if empty, show message, else don't show messages
 
 
