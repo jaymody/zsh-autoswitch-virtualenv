@@ -218,7 +218,7 @@ function check_virtualenv() {
         local virtualenv_type="$(_get_virtualenv_type "$OLDPWD")"
         local virtualenv_name="$(_get_virtualenv_name "$VIRTUAL_ENV" "$virtualenv_type")"
         _autoswitch_message "Deactivating: ${BOLD}${PURPLE}%s${NORMAL}\n" "$virtualenv_name"
-        source deactivate
+        deactivate
     else
         # do nothing
     fi
