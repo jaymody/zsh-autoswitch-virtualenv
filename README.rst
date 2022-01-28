@@ -1,3 +1,8 @@
+WARNING: Custom Version! Use at your own demise ...
+============================
+Readme is no longer accurate just fyi.
+
+
 Autoswitch Python Virtualenv
 ============================
 
