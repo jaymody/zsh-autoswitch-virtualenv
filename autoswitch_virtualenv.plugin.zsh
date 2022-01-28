@@ -130,14 +130,19 @@ function _activate_pipenv() {
 
 
 function _get_virtualenv_type() {
-    # NOTE: We check virtualenv first because we can skip the fetching 
+    # NOTE: We check pyenv first so it get's priority such that we don't conflict
+    # with their auto switching stuff via pyenv local.
+    # 
+    # We check virtualenv second because we can skip the fetching 
     # of the virtualenv directory (via pipenv/poetry) which can be slow,
     # this way speed is a lot more optimized. This also means if for some reason
     # there exists a virtualenv directory that is not the one associated with
     # pipenv/poetry, it takes priority
 
     local cur_dir="$1"
-    if [[ -f "${cur_dir}/.env/bin/activate" || -f "${cur_dir}/.venv/bin/activate" || -f "${cur_dir}/env/bin/activate" || -f "${cur_dir}/venv/bin/activate" ]]; then
+    if [[ -f "$cur_dir/.python-version" ]]; then
+        printf "pyenv"
+    elif [[ -f "${cur_dir}/.env/bin/activate" || -f "${cur_dir}/.venv/bin/activate" || -f "${cur_dir}/env/bin/activate" || -f "${cur_dir}/venv/bin/activate" ]]; then
         printf "virtualenv"
     elif [[ -f "${cur_dir}/poetry.lock" ]]; then
         printf "poetry"
@@ -211,14 +216,21 @@ function check_virtualenv() {
             fi
             _maybeworkon "$virtualenv_dir" "virtualenv"
             return
+        elif [[ "$virtualenv_type" == "pyenv" ]]; then
+            # do nothing
         else
             printf "${RED}AUTOSWITCH ERROR: Unknown virtualenv type: $virtualenv_type${NORMAL}\n"
         fi
     elif [[ -n "$VIRTUAL_ENV" ]]; then
         local virtualenv_type="$(_get_virtualenv_type "$OLDPWD")"
-        local virtualenv_name="$(_get_virtualenv_name "$VIRTUAL_ENV" "$virtualenv_type")"
-        _autoswitch_message "Deactivating: ${BOLD}${PURPLE}%s${NORMAL}\n" "$virtualenv_name"
-        deactivate
+
+        if [[ "$virtualenv_type" == "pyenv" ]]; then
+            # do nothing
+        else
+            local virtualenv_name="$(_get_virtualenv_name "$VIRTUAL_ENV" "$virtualenv_type")"
+            _autoswitch_message "Deactivating: ${BOLD}${PURPLE}%s${NORMAL}\n" "$virtualenv_name"
+            deactivate
+        fi
     else
         # do nothing
     fi
